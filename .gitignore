@@ -1,0 +1,12 @@
+# Sanal ortamlar
+venv/
+.venv/
+env/
+
+# Gereksiz dosyalar
+__pycache__/
+*.py[cod]
+.DS_Store
+
+# AI Fluency klasörünü tamamen dışarıda bırak
+AI Fluency/
