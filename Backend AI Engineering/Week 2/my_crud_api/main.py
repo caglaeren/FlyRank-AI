@@ -36,7 +36,7 @@ def read_healt():
     return {"status" : "ok"}
 
 #tüm görevleri listeleyelim, okuyalım
-@app.get("/tasks")
+@app.get("/tasks", summary="Get all tasks")
 def read_tasks():
     return tasks
 
@@ -51,7 +51,7 @@ def read_task(task_id : int):
 
 #post yani yeni task ekleyelim
 #201: created yani oluşturuldu isteğin başarıyla işlendiği anlamına gelir
-@app.post("/tasks", status_code=201)
+@app.post("/tasks", status_code=201, summary="Create a new task")
 def create_task(task: TaskCreate):
     #title boş ise error ver
     if not task.title or not task.title.strip():
@@ -72,7 +72,7 @@ def create_task(task: TaskCreate):
 #put : güncelleme yapalım, idye göre
 #Unknown id → 404
 #Empty/invalid body -> 400
-@app.put("/tasks/{task_id}", status_code=status.HTTP_200_OK)
+@app.put("/tasks/{task_id}", status_code=status.HTTP_200_OK, summary="Update a task")
 def update_task(task_id: int, task_update: TaskUpdate):
     # 1- taskı bulalım
     task = None
@@ -104,7 +104,7 @@ def update_task(task_id: int, task_update: TaskUpdate):
 # 204 -> no content (içerik yok) 
 #204: sunucunun bir istemci isteğini başarıyla yerine getirdiğini ancak yanıt olarak herhangi bir veri veya içerik göndermediğini belirten
 
-@app.delete("/tasks/{task_id}", status_code=204)
+@app.delete("/tasks/{task_id}", status_code=204, summary="Delete a task")
 def delete_task(task_id:int):
     for i, task in enumerate(tasks):
         if task["id"] == task_id:
