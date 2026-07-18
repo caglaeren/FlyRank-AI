@@ -71,6 +71,6 @@ Here are the verification screenshots for the CRUD operations performed via Swag
 
 ---
 ## About the Developer
-**Tuğba Çağla EREN** - Backend AI Engineering Intern
+**Tuğba Çağla EREN** - Backend AI Engineering Intern at FlyRank AI
 - [LinkedIn Profile](https://www.linkedin.com/in/cagla-eren/)
 - Passionate about Data Science, Machine Learning, and RAG architectures.
