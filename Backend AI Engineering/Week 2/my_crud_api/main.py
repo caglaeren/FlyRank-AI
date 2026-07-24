@@ -1,10 +1,51 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel
 from typing import Optional
 from fastapi import status
+import sqlite3 #veritabanı icin
+
 
 app = FastAPI()
 
+
+#veritabanını olustuyoruz
+DB_NAME = "tasks.db"
+
+#veritabanını başlatalım
+def create_db():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    #Tablo oluştur (eğer yoksa)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            done BOOLEAN NOT NULL DEFAULT 0
+        )
+    """)
+
+    #Tablo boşsa ilk seferde 3 örnek ekleyelim
+    cursor.execute("SELECT COUNT(*) from tasks ")
+    count = cursor.fetchone()[0] #ilk satır ilk sutun
+
+    if count == 0: #ilk seferde
+        ornek_tasklar = [
+            ("Complete the AI projects", 0),
+            ("Feed the cats", 1),
+            ("Read a book", 0)
+            
+        ]
+        cursor.executemany("Insert Into tasks (title, done) Values (?, ?)", ornek_tasklar)
+        conn.commit()
+    conn.close()
+
+#Uygulama ayağa kalkarken veritabanını hazırlayalım
+@app.on_event("startup")
+async def startup_event():
+    create_db()
+
+#pydantic modelleri
 class TaskCreate(BaseModel):
     title : str
 
@@ -25,7 +66,7 @@ tasks = [
 def read_root():
     return {
         "name" : "Task API",
-        "version" : "1.0",
+        "version" : "2.0",
         "endpoints" : ["/tasks"]
     }
 
