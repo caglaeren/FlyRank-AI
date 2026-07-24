@@ -19,7 +19,7 @@ def get_db_connection():
 
 #veritabanını başlatalım
 #Veritabanı bağlantısı (conn) sadece veri tabanına giden bir yol açar;
-#cursor ise bu yoldan yürüyerek komutları işleten işçidir.
+#cursor ise bu yoldan yürüyerek komutları işleten işçidir
 def create_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor() #veritabanında islemler yapmak icin imlec olusturur
