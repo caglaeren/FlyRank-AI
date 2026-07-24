@@ -145,29 +145,52 @@ def create_task(task: TaskCreate):
 #Empty/invalid body -> 400
 @app.put("/tasks/{task_id}", status_code=status.HTTP_200_OK, summary="Update a task")
 def update_task(task_id: int, task_update: TaskUpdate):
-    # 1- taskı bulalım
-    task = None
-    for t in tasks:
-        if t["id"] == task_id:
-            task = t
-            break
-    
-    if task is None:
-        raise HTTPException(status_code=404, detail=f"Task {task_id} not found.")
-
-    # 2- doğrulama yapalım
+    # 1- doğrulama yapalım çünkü bir task gönderilmediyse hata fırlatsın
     if task_update.title is None and task_update.done is None:
         raise HTTPException(status_code=400, detail="At least one field must be provided. ('title' / 'done')")
-    
-    # 3- güncelleme - update
-    if task_update.title is not None:
-        if not task_update.title.strip():
-            raise HTTPException(status_code=400, detail="Title can not be empty.")
-        task["title"] = task_update.title.strip()
-    if task_update.done is not None:
-        task["done"] = task_update.done
 
-    return task
+    # 2- eğer title gönderildiyse boş olmadığından emin olalım
+    if task_update.title is not None and not task_update.title.strip():
+        raise HTTPException(status_code=400, detail="Title can not be empty.")
+    
+    #3- veritabanına bağlanalım
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    #4-Task veritabanında var mı bakalım
+    cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+    task = cursor.fetchone()
+    if task is None: #task yoksa hata fırlat
+        conn.close()
+        raise HTTPException(status_code=404, detail=f"Task {task_id} not found.")
+
+    new_title= task["title"] #taskın mevcut title'ı
+    new_done= task["done"] #taskın mevcut done degeri
+
+    # Gönderilen yeni değerler varsa güncelleyelim
+    if task_update.title is not None: #title'a değer atamış mı
+        new_title = task_update.title.strip()
+    
+    if task_update.done is not None:
+        if task_update.done == True:
+            new_done = 1
+        else:
+            new_done = 0
+        
+
+    #5-Veritabanında güncelleme yapalım
+    cursor.execute("UPDATE tasks SET title = ?, done = ? WHERE id = ?", (new_title, new_done, task_id))
+    conn.commit()
+
+    #6- güncellenen veriyi çekip dönelim
+    cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+    updated_task = cursor.fetchone()
+    conn.close()
+
+    return {"id": updated_task["id"], "title": updated_task["title"], "done": bool(updated_task["done"])}
+
+    
+
 
 
 
@@ -179,8 +202,19 @@ def update_task(task_id: int, task_update: TaskUpdate):
 
 @app.delete("/tasks/{task_id}", status_code=204, summary="Delete a task")
 def delete_task(task_id:int):
-    for i, task in enumerate(tasks):
-        if task["id"] == task_id:
-            tasks.pop(i)
-            return
-    raise HTTPException(status_code=404, detail=f"Task {task_id} not found.")
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    #Task veritabanında var mı
+    cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+    task = cursor.fetchone()
+    if task is None:
+        conn.close()
+        raise HTTPException(status_code=404, detail=f"Task {task_id} not found.")
+    
+    #Veritabanından silelim
+    cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+    conn.commit()
+    conn.close()
+
+    return #204 no content döner
