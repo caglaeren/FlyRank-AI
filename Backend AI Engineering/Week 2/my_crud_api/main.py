@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from fastapi import status
@@ -11,10 +11,18 @@ app = FastAPI()
 #veritabanını olustuyoruz
 DB_NAME = "tasks.db"
 
+#veritabanının baglantısını alacagız
+def get_db_connection():
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row  #sütunlara sözlük gibi isimleriyle erişebilmek için
+    return conn
+
 #veritabanını başlatalım
+#Veritabanı bağlantısı (conn) sadece veri tabanına giden bir yol açar;
+#cursor ise bu yoldan yürüyerek komutları işleten işçidir.
 def create_db():
     conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
+    cursor = conn.cursor() #veritabanında islemler yapmak icin imlec olusturur
 
     #Tablo oluştur (eğer yoksa)
     cursor.execute("""
@@ -77,18 +85,30 @@ def read_healt():
     return {"status" : "ok"}
 
 #tüm görevleri listeleyelim, okuyalım
+#veritabanından okuyalım
 @app.get("/tasks", summary="Get all tasks")
 def read_tasks():
-    return tasks
+    conn = get_db_connection() #veritabanına baglan
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM tasks") #veritabanından verileri al
+    tasks = cursor.fetchall()
+    conn.close()
 
-# tek bir görevi getirelim
-@app.get("/tasks/{task_id}")
+    #done değerini boolean yapmak için dönüştürüyoruz
+    return [{"id": t["id"], "title": t["title"], "done": bool(t["done"])} for t in tasks]
+
+# tek bir görevi id'ye göre veritabanından getirelim
+@app.get("/tasks/{task_id}", summary = "Get a task by id")
 def read_task(task_id : int):
-    for task in tasks:
-        if task["id"] == task_id:
-            return task
-    raise HTTPException(status_code=404, detail=f"Task {task_id} not found.")
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("Selecet * from tasks where id = ?", (task_id,))
+    task = cursor.fetchone() #bir tane veri gelecek
+    conn.close()
 
+    if task is None:  #veri yoksa
+        raise HTTPException(status_code=404, detail=f"Task {task_id} not found.")
+    return {"id": task["id"], "title": task["title"], "done": bool(task["done"])}
 
 #post yani yeni task ekleyelim
 #201: created yani oluşturuldu isteğin başarıyla işlendiği anlamına gelir
