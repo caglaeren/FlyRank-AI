@@ -69,7 +69,22 @@ Here are the verification screenshots for the CRUD operations performed via Swag
 ![Verify Deletion](images/get_all_after_id_4_delete.png)
 
 
----
+## Database Configuration (SQLite)
+
+- **Why SQLite was chosen:** SQLite was chosen because it is lightweight, serverless, self-contained, and requires zero configuration, making it ideal for local development, testing, and small-to-medium-scale applications.
+- **Where the database file is stored:** The database file (`tasks.db`) is automatically created and stored locally in the root directory of the project when the application starts.
+- **Automatic Database Creation:** The project is configured with SQLAlchemy/database session management so that someone cloning the repository can run the project and automatically create the database file without manual setup.
+
+### Database Viewer Screenshot
+![Database Viewer](images/db_browser_for_sqlite.png)
+
+### Example SQL Query Executed
+```sql
+-- Update all tasks to mark them as completed
+UPDATE tasks SET done = 1;
+
+```
+
 ## About the Developer
 **Tuğba Çağla EREN** - Backend AI Engineering Intern at FlyRank AI
 - [LinkedIn Profile](https://www.linkedin.com/in/cagla-eren/)
