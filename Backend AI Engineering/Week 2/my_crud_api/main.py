@@ -61,13 +61,6 @@ class TaskUpdate(BaseModel):
     title : Optional[str] = None
     done: Optional[bool] = None
 
-#id, title, done olacak
-tasks = [
-    {"id": 1, "title": "Complete the AI projects", "done": False},
-    {"id": 2, "title": "Feed the cats", "done": True},
-    {"id": 3, "title": "Read a book", "done": False }
-    
-]
 
 #ana dizin endpointi
 @app.get("/")
@@ -102,7 +95,7 @@ def read_tasks():
 def read_task(task_id : int):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("Selecet * from tasks where id = ?", (task_id,))
+    cursor.execute("Select * from tasks where id = ?", (task_id,))
     task = cursor.fetchone() #bir tane veri gelecek
     conn.close()
 
