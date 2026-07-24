@@ -77,6 +77,9 @@ def read_root():
 def read_healt():
     return {"status" : "ok"}
 
+
+# --------- GET ----------
+
 #tüm görevleri listeleyelim, okuyalım
 #veritabanından okuyalım
 @app.get("/tasks", summary="Get all tasks")
@@ -103,6 +106,11 @@ def read_task(task_id : int):
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found.")
     return {"id": task["id"], "title": task["title"], "done": bool(task["done"])}
 
+
+
+
+# --------- POST ----------
+
 #post yani yeni task ekleyelim
 #201: created yani oluşturuldu isteğin başarıyla işlendiği anlamına gelir
 @app.post("/tasks", status_code=201, summary="Create a new task")
@@ -111,17 +119,26 @@ def create_task(task: TaskCreate):
     if not task.title or not task.title.strip():
         raise HTTPException(status_code=400, detail="Task title is required.")
 
-    # yeni id oluşturalım
-    new_id = max([t["id"] for t in tasks]) + 1
+    conn = get_db_connection()
+    cursor = conn.cursor()
 
-    new_task = {
-        "id" : new_id,
-        "title" : task.title,
-        "done" : False
-    }
-    tasks.append(new_task)
-    return new_task
+    #yeni taskı veritabanına ekleyelim, başta done 0 yani false olarak atanır default o çünkü
+    cursor.execute("INSERT INTO tasks (title, done) VALUES (?, ?)", (task.title.strip(),0))
+    conn.commit() #post işlemini kalıcı olarak kaydetmek için
 
+
+    # olusturulan taskın id'sini alalım
+    new_id = cursor.lastrowid #son eklenen satırın id'sini al
+
+    #eklenen görevi veritabanından okuyup donelim
+    cursor.execute("SELECT * FROM tasks WHERE id = ?", (new_id,))
+    created_task = cursor.fetchone()
+    conn.close()
+
+    return {"id": created_task["id"], "title": created_task["title"], "done": bool(created_task["done"])}
+
+
+# --------- PUT ----------
 
 #put : güncelleme yapalım, idye göre
 #Unknown id → 404
@@ -153,6 +170,8 @@ def update_task(task_id: int, task_update: TaskUpdate):
     return task
 
 
+
+# --------- DELETE ----------
 
 # delete : silme yapalım
 # 204 -> no content (içerik yok) 
