@@ -135,16 +135,15 @@ def create_task(task: TaskCreate):
     cursor = conn.cursor()
 
     #yeni taskı veritabanına ekleyelim, başta done 0 yani false olarak atanır default o çünkü
-    cursor.execute("INSERT INTO tasks (title, done) VALUES (?, ?)", (task.title.strip(),0))
+    cursor.execute("INSERT INTO tasks (title, done) VALUES (%s, %s) Returning id", (task.title.strip(),False))
+    
+    new_id = cursor.fetchone()["id"] #eklenen id yi al
     conn.commit() #post işlemini kalıcı olarak kaydetmek için
 
-
-    # olusturulan taskın id'sini alalım
-    new_id = cursor.lastrowid #son eklenen satırın id'sini al
-
     #eklenen görevi veritabanından okuyup donelim
-    cursor.execute("SELECT * FROM tasks WHERE id = ?", (new_id,))
+    cursor.execute("SELECT * FROM tasks WHERE id = %s", (new_id,))
     created_task = cursor.fetchone()
+    cursor.close()
     conn.close()
 
     return {"id": created_task["id"], "title": created_task["title"], "done": bool(created_task["done"])}
@@ -170,40 +169,37 @@ def update_task(task_id: int, task_update: TaskUpdate):
     cursor = conn.cursor()
 
     #4-Task veritabanında var mı bakalım
-    cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+    cursor.execute("SELECT * FROM tasks WHERE id = %s", (task_id,))
     task = cursor.fetchone()
     if task is None: #task yoksa hata fırlat
+        cursor.close()
         conn.close()
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found.")
 
-    new_title= task["title"] #taskın mevcut title'ı
-    new_done= task["done"] #taskın mevcut done degeri
+    new_title = task["title"] #taskın mevcut title'ı
+    new_done = task["done"] #taskın mevcut done degeri
 
     # Gönderilen yeni değerler varsa güncelleyelim
     if task_update.title is not None: #title'a değer atamış mı
         new_title = task_update.title.strip()
     
     if task_update.done is not None:
-        if task_update.done == True:
-            new_done = 1
-        else:
-            new_done = 0
+        new_done = task_update.done
         
 
     #5-Veritabanında güncelleme yapalım
-    cursor.execute("UPDATE tasks SET title = ?, done = ? WHERE id = ?", (new_title, new_done, task_id))
+    cursor.execute("UPDATE tasks SET title = %s, done = %s WHERE id = %s", (new_title, new_done, task_id))
     conn.commit()
 
     #6- güncellenen veriyi çekip dönelim
-    cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+    cursor.execute("SELECT * FROM tasks WHERE id = %s", (task_id,))
     updated_task = cursor.fetchone()
+    cursor.close()
     conn.close()
 
     return {"id": updated_task["id"], "title": updated_task["title"], "done": bool(updated_task["done"])}
 
     
-
-
 
 
 # --------- DELETE ----------
@@ -218,15 +214,16 @@ def delete_task(task_id:int):
     cursor = conn.cursor()
 
     #Task veritabanında var mı
-    cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+    cursor.execute("SELECT * FROM tasks WHERE id = %s", (task_id,))
     task = cursor.fetchone()
     if task is None:
         conn.close()
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found.")
     
     #Veritabanından silelim
-    cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+    cursor.execute("DELETE FROM tasks WHERE id = %s", (task_id,))
     conn.commit()
+    cursor.close()
     conn.close()
 
     return #204 no content döner
