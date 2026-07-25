@@ -43,7 +43,7 @@ def create_db():
 
     #Tablo boşsa ilk seferde 3 örnek ekleyelim
     cursor.execute("SELECT COUNT(*) from tasks ")
-    count = cursor.fetchone()["count"] #ilk satır ilk sutun
+    count = cursor.fetchone()["count"] #count degerini al
 
     if count == 0: #ilk seferde
         ornek_tasklar = [
