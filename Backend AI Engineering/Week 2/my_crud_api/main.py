@@ -1,51 +1,61 @@
+import os
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from fastapi import status
 import sqlite3 #veritabanı icin
+from dotenv import load_dotenv #env dosyasını okumak icin
+import psycopg #python ile postgresql arasında baglantı kurmayı saglar
+from psycopg.rows import dict_row #postgresql verilerini dict olarak almak icin
+
+
+#.env dosyasındaki degiskenleri yüklemek icin
+load_dotenv()
 
 
 app = FastAPI()
 
 
-#veritabanını olustuyoruz
-DB_NAME = "tasks.db"
+#.env den database urlsini alalım
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 #veritabanının baglantısını alacagız
 def get_db_connection():
-    conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row  #sütunlara sözlük gibi isimleriyle erişebilmek için
+    # row_factory=dict_row sayesinde sütunlara sözlük gibi (t["title"]) erişebiliriz
+    conn = psycopg.connect(DATABASE_URL, row_factory=dict_row)
     return conn
 
 #veritabanını başlatalım
 #Veritabanı bağlantısı (conn) sadece veri tabanına giden bir yol açar;
 #cursor ise bu yoldan yürüyerek komutları işleten işçidir
 def create_db():
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_db_connection()
     cursor = conn.cursor() #veritabanında islemler yapmak icin imlec olusturur
 
-    #Tablo oluştur (eğer yoksa)
+    #Tablo oluştur (eğer yoksa) - postgresql için
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS tasks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             title TEXT NOT NULL,
-            done BOOLEAN NOT NULL DEFAULT 0
+            done BOOLEAN NOT NULL DEFAULT FALSE
         )
     """)
 
     #Tablo boşsa ilk seferde 3 örnek ekleyelim
     cursor.execute("SELECT COUNT(*) from tasks ")
-    count = cursor.fetchone()[0] #ilk satır ilk sutun
+    count = cursor.fetchone()["count"] #ilk satır ilk sutun
 
     if count == 0: #ilk seferde
         ornek_tasklar = [
-            ("Complete the AI projects", 0),
-            ("Feed the cats", 1),
-            ("Read a book", 0)
+            ("Complete the AI projects", False),
+            ("Feed the cats", True),
+            ("Read a book", False)
             
         ]
-        cursor.executemany("Insert Into tasks (title, done) Values (?, ?)", ornek_tasklar)
+        #%s işaretleri yer tutucudur (placeholder)
+        cursor.executemany("Insert Into tasks (title, done) Values (%s, %s)", ornek_tasklar)
         conn.commit()
+    cursor.close()
     conn.close()
 
 #Uygulama ayağa kalkarken veritabanını hazırlayalım
@@ -67,14 +77,14 @@ class TaskUpdate(BaseModel):
 def read_root():
     return {
         "name" : "Task API",
-        "version" : "2.0",
+        "version" : "3.0",
         "endpoints" : ["/tasks"]
     }
 
     
 #saglık kontrolü endpointi
 @app.get("/health")
-def read_healt():
+def read_health():
     return {"status" : "ok"}
 
 
