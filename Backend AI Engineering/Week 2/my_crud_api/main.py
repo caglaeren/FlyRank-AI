@@ -98,6 +98,7 @@ def read_tasks():
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM tasks") #veritabanından verileri al
     tasks = cursor.fetchall()
+    cursor.close()
     conn.close()
 
     #done değerini boolean yapmak için dönüştürüyoruz
@@ -108,8 +109,9 @@ def read_tasks():
 def read_task(task_id : int):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("Select * from tasks where id = ?", (task_id,))
+    cursor.execute("Select * from tasks where id = %s", (task_id,))
     task = cursor.fetchone() #bir tane veri gelecek
+    cursor.close()
     conn.close()
 
     if task is None:  #veri yoksa
