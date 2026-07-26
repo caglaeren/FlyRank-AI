@@ -1,21 +1,34 @@
-# Simple CRUD API with FastAPI
+# Simple CRUD API with FastAPI & PostgreSQL
 
-This project is a Task Management API that performs basic CRUD (Create, Read, Update, Delete) operations.
+This project is a Task Management API that performs basic CRUD (Create, Read, Update, Delete) operations, fully containerized with Docker Compose.
 
+## 🚀 Quick Start (One-Command Run)
 
-## Installation and Running
+To run this project locally, ensure you have **Docker** and **Docker Compose** installed on your machine.
 
-Ensure you have Python installed, then follow these steps:
-
-1. Install the required dependencies:
+1. **Clone the repository:**
    ```bash
-   pip install fastapi uvicorn
-   ````
+   git clone <your-repo-url>
+   cd my_crud_api
+   ```
 
-2. Start the server :
+2. **Set up the environment variables:**
    ```bash
-   uvicorn main:app --reload
-   ````
+   cp .env.example .env
+   ```
+
+3. **Run everything with a single command:**
+   ```bash
+   docker compose up --build
+   ```
+
+The API will be available at http://localhost:3000, and the PostgreSQL database will automatically initialize.
+
+## 🛠️ Environment Variables
+| Variable | Description | Example |
+| :--- | :--- | :--- |
+| DATABASE_URL | PostgreSQL connection string pointing to the docker service | postgres://postgres:dev@db:5432/tasks |
+
 
 ## API Endpoints
 
@@ -28,13 +41,13 @@ Ensure you have Python installed, then follow these steps:
 
 
 ## Swagger UI
-Access the interactive API documentation at: ```http://127.0.0.1:8000/docs```
+Access the interactive API documentation at: `http://localhost:3000/docs`
 
 
 ## Example curl Output (GET)
 
 ```bash
-curl -X GET [http://127.0.0.1:8000/tasks](http://127.0.0.1:8000/tasks)
+curl -i http://localhost:3000/tasks
 ```
 
 **JSON**
@@ -69,19 +82,19 @@ Here are the verification screenshots for the CRUD operations performed via Swag
 ![Verify Deletion](images/get_all_after_id_4_delete.png)
 
 
-## Database Configuration (SQLite)
+## Database Configuration (PostgreSQL & Docker)
 
-- **Why SQLite was chosen:** SQLite was chosen because it is lightweight, serverless, self-contained, and requires zero configuration, making it ideal for local development, testing, and small-to-medium-scale applications.
-- **Where the database file is stored:** The database file (`tasks.db`) is automatically created and stored locally in the root directory of the project when the application starts.
-- **Automatic Database Creation:** The project is configured with SQLAlchemy/database session management so that someone cloning the repository can run the project and automatically create the database file without manual setup.
+- **Why PostgreSQL was chosen:** PostgreSQL is a powerful, enterprise-class open-source relational database system that provides robust concurrency, reliability, and seamless containerization support via Docker.
+- **How data persistence works:** The database state is securely stored using a Docker volume (`taskdata`), ensuring data is preserved even when containers are stopped or recreated.
+- **Automatic Database Creation:** The project is configured so that someone cloning the repository can run `docker compose up` and automatically set up the database structure without manual intervention.
 
 ### Database Viewer Screenshot
-![Database Viewer](images/db_browser_for_sqlite.png)
+![Database Viewer](images/postgresql_docker1.png)
 
 ### Example SQL Query Executed
 ```sql
 -- Update all tasks to mark them as completed
-UPDATE tasks SET done = 1;
+UPDATE tasks SET done = TRUE;
 
 ```
 
