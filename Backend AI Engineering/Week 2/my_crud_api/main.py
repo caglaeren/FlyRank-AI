@@ -7,17 +7,23 @@ import sqlite3 #veritabanı icin
 from dotenv import load_dotenv #env dosyasını okumak icin
 import psycopg #python ile postgresql arasında baglantı kurmayı saglar
 from psycopg.rows import dict_row #postgresql verilerini dict olarak almak icin
-
+from supabase import create_client, Client
 
 #.env dosyasındaki degiskenleri yüklemek icin
 load_dotenv()
 
-
 app = FastAPI()
 
 
-#.env den database urlsini alalım
+#.envden değişkenleri alalım
 DATABASE_URL = os.getenv("DATABASE_URL")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+#supabase clientini olusturalım
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+
 
 #veritabanının baglantısını alacagız
 def get_db_connection():
@@ -70,6 +76,35 @@ class TaskCreate(BaseModel):
 class TaskUpdate(BaseModel):
     title : Optional[str] = None
     done: Optional[bool] = None
+
+class AuthRequest(BaseModel):
+    email: str
+    password: str
+
+
+#---post auth routes----
+@app.post("/auth/signup", status_code=201, summary="Register a new user")
+def signup(auth: AuthRequest):
+    if not auth.email or not auth.email.strip() or not auth.password or not auth.password.strip():
+        raise HTTPException(status_code=400, detail="Email and password are required.")
+    try:
+        response = supabase.auth.sign_up({"email": auth.email.strip(), "password": auth.password.strip()})
+        return response
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/auth/login", status_code=200, summary="Login a user")
+def login(auth: AuthRequest):
+    if not auth.email or not auth.email.strip() or not auth.password or not auth.password.strip():
+        raise HTTPException(status_code=400, detail="Email and password are required.")
+    try:
+        response = supabase.auth.sign_in_with_password({"email": auth.email.strip(), "password": auth.password.strip()})
+        if response.session:
+            return {"access_token":response.session.access_token, "refresh_token": response.session.refresh_token}
+        else:
+            raise HTTPException(status_code=400, detail={"error": "Invalid login credentials."})
+    except Exception as e:
+        raise HTTPException(status_code=401, detail={"error":"Invalid login credentials" })
 
 
 #ana dizin endpointi
