@@ -1,5 +1,7 @@
 import os
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi.responses import JSONResponse 
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 from typing import Optional
 from fastapi import status
@@ -13,6 +15,8 @@ from supabase import create_client, Client
 load_dotenv()
 
 app = FastAPI()
+
+header_scheme = APIKeyHeader(name="Authorization", auto_error=False)
 
 
 #.envden değişkenleri alalım
@@ -82,7 +86,7 @@ class AuthRequest(BaseModel):
     password: str
 
 
-#---post auth routes----
+#---POST AUTH ROUTES----
 @app.post("/auth/signup", status_code=201, summary="Register a new user")
 def signup(auth: AuthRequest):
     if not auth.email or not auth.email.strip() or not auth.password or not auth.password.strip():
@@ -105,6 +109,38 @@ def login(auth: AuthRequest):
             raise HTTPException(status_code=400, detail={"error": "Invalid login credentials."})
     except Exception as e:
         raise HTTPException(status_code=401, detail={"error":"Invalid login credentials" })
+
+
+#GET ROUTES - public & protected
+#Public endpoint
+@app.get("/public/info", status_code=200, summary="Public info endpoint")
+def public_info():
+    return {"message": "Welcome stranger! This info is public."}
+
+#Protected endpoint 
+@app.get("/protected/profile", status_code=200, summary="Protected profile endpoint")
+def protected_profile(authorization: Optional[str] = Depends(header_scheme)):
+    #baslık hic gelmediyse hata fırlat
+    if not authorization:
+        return JSONResponse(status_code = status.HTTP_401_UNAUTHORIZED, content={"error": "Access token required"})
+    
+    #format kontrolü yapalım (Bearer ile başlayacak)
+    if not authorization.strip().lower().startswith("bearer "):
+        return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"error": "Access token required"})
+    
+    #"Bearer " kısmını ayıklayıp al ve arkasında token kalıp kalmadıgını kontrol edelim
+    try:
+        parts = authorization.split() 
+        #eger liste 2 elemandan oluşmuyorsa bearer + token format hatalıdır
+        if len(parts) != 2:
+            raise IndexError
+        token = parts[1]
+    except IndexError:
+        return JSONResponse(status_code = status.HTTP_401_UNAUTHORIZED, content={"error": "Access token required"})
+    
+    #sadece token sunuldugu icin basarılı don
+    return {"message":"Access granted to protected route."}
+
 
 
 #ana dizin endpointi
