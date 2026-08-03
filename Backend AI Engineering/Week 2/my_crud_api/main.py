@@ -1,6 +1,6 @@
 import os
 from fastapi import FastAPI, HTTPException, Header, Depends
-from fastapi.responses import JSONResponse 
+from fastapi.responses import JSONResponse, Response
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 from typing import Optional
@@ -16,6 +16,7 @@ load_dotenv()
 
 app = FastAPI()
 
+#tokeni headerde almak icin
 header_scheme = APIKeyHeader(name="Authorization", auto_error=False)
 
 
@@ -86,6 +87,29 @@ class AuthRequest(BaseModel):
     password: str
 
 
+#Guards
+def get_current_user(authorization: Optional[str] = Depends(header_scheme)):
+    if not authorization:
+        raise HTTPException(status_code=401, detail= {"error":"Access token required"})
+    if not authorization.strip().lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail= {"error":"Access token required"})
+    try:
+        parts = authorization.split()
+        if len(parts) != 2:
+            raise IndexError
+        token = parts[1]
+    except IndexError:
+        raise HTTPException(status_code=401, detail= {"error":"Access token required"})
+    try:
+        user_response = supabase.auth.get_user(token)
+        if not user_response or not user_response.user:
+            raise HTTPException(status_code=401, detail= {"error":"Invalid or expired token"})
+        return user_response.user
+    except Exception:
+        raise HTTPException(status_code=401, detail= {"error": "Invalid or expired token"})
+
+
+
 #---POST AUTH ROUTES----
 @app.post("/auth/signup", status_code=201, summary="Register a new user")
 def signup(auth: AuthRequest):
@@ -111,52 +135,40 @@ def login(auth: AuthRequest):
         raise HTTPException(status_code=401, detail={"error":"Invalid login credentials" })
 
 
+#Logout route
+@app.post("/auth/logout", status_code=204, summary="Logout endpoint")
+def logout(authorization: Optional[str] = Depends(header_scheme)):
+    try:
+        if authorization and authorization.strip().lower().startswith("bearer "):
+            token = authorization.strip().lower().split()[1]
+            supabase.auth.sign_out(token)
+    except Exception:
+        pass
+    
+    return Response(status_code=204)
+
+
 #GET ROUTES - public & protected
 #Public endpoint
 @app.get("/public/info", status_code=200, summary="Public info endpoint")
 def public_info():
     return {"message": "Welcome stranger! This info is public."}
 
-#Protected endpoint 
+#Protected profile endpoint 
 @app.get("/protected/profile", status_code=200, summary="Protected profile endpoint")
-def protected_profile(authorization: Optional[str] = Depends(header_scheme)):
-    #baslık hic gelmediyse hata fırlat
-    if not authorization:
-        return JSONResponse(status_code = status.HTTP_401_UNAUTHORIZED, content={"error": "Access token required"})
-    
-    #format kontrolü yapalım (Bearer ile başlayacak)
-    if not authorization.strip().lower().startswith("bearer "):
-        return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"error": "Access token required"})
-    
-    #"Bearer " kısmını ayıklayıp al ve arkasında token kalıp kalmadıgını kontrol edelim
-    try:
-        parts = authorization.split() 
-        #eger liste 2 elemandan oluşmuyorsa bearer + token format hatalıdır
-        if len(parts) != 2:
-            raise IndexError
-        token = parts[1]
-    except IndexError:
-        return JSONResponse(status_code = status.HTTP_401_UNAUTHORIZED, content={"error": "Access token required"})
-    
-    
-    try:
-        #supabase ile tokenı dogrulayalım
-        user_response = supabase.auth.get_user(token)
+def protected_profile(user = Depends(get_current_user)):
+    return {
+        "id":user.id, 
+        "email":user.email,
+        "created_at":user.created_at, 
+        "updated_at":user.updated_at, 
+        "account_created":user.created_at
+    }
 
-        #eger kullanıcı bilgisi alınamazsa veya hata olursa
-        if not user_response or not user_response.user:
-            return JSONResponse(status_code = status.HTTP_401_UNAUTHORIZED, content={"error": "Invalid or expired token"})
-        
-        user = user_response.user
-
-        #istenen guvenli verileri don 
-        return {"id":user.id, "email":user.email, "created_at":user.created_at, "updated_at":user.updated_at, "account_created":user.created_at}
-
-    except Exception:
-        #token gecersiz, suresi dolmus veya bozulmussa
-        return JSONResponse(status_code = status.HTTP_401_UNAUTHORIZED, content={"error": "Invalid or expired token"})
-
-    
+#Protected dashboard endpoint
+@app.get("/protected/dashboard", status_code=200, summary="Protected dashboard endpoint")
+def protected_dashboard(user = Depends(get_current_user)):
+    return {"message": f"Welcome {user.email}! This dashboard is protected."}   
 
 
 
@@ -165,7 +177,7 @@ def protected_profile(authorization: Optional[str] = Depends(header_scheme)):
 def read_root():
     return {
         "name" : "Task API",
-        "version" : "3.0",
+        "version" : "4.0",
         "endpoints" : ["/tasks"]
     }
 
