@@ -138,8 +138,25 @@ def protected_profile(authorization: Optional[str] = Depends(header_scheme)):
     except IndexError:
         return JSONResponse(status_code = status.HTTP_401_UNAUTHORIZED, content={"error": "Access token required"})
     
-    #sadece token sunuldugu icin basarılı don
-    return {"message":"Access granted to protected route."}
+    
+    try:
+        #supabase ile tokenı dogrulayalım
+        user_response = supabase.auth.get_user(token)
+
+        #eger kullanıcı bilgisi alınamazsa veya hata olursa
+        if not user_response or not user_response.user:
+            return JSONResponse(status_code = status.HTTP_401_UNAUTHORIZED, content={"error": "Invalid or expired token"})
+        
+        user = user_response.user
+
+        #istenen guvenli verileri don 
+        return {"id":user.id, "email":user.email, "created_at":user.created_at, "updated_at":user.updated_at, "account_created":user.created_at}
+
+    except Exception:
+        #token gecersiz, suresi dolmus veya bozulmussa
+        return JSONResponse(status_code = status.HTTP_401_UNAUTHORIZED, content={"error": "Invalid or expired token"})
+
+    
 
 
 
