@@ -1,7 +1,7 @@
 import os
 from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.responses import JSONResponse, Response
-from fastapi.security import APIKeyHeader
+from fastapi.security import APIKeyHeader, HTTPBearer
 from pydantic import BaseModel
 from typing import Optional
 from fastapi import status
@@ -16,7 +16,8 @@ load_dotenv()
 
 app = FastAPI()
 
-#tokeni headerde almak icin
+#swagger ui icin httpbearer ve header
+auth_scheme = HTTPBearer()
 header_scheme = APIKeyHeader(name="Authorization", auto_error=False)
 
 
@@ -87,26 +88,33 @@ class AuthRequest(BaseModel):
     password: str
 
 
-#Guards
-def get_current_user(authorization: Optional[str] = Depends(header_scheme)):
-    if not authorization:
+#Guards with HttpBearer ve Swagger UI
+def get_current_user(token_auth = Depends(auth_scheme), authorization: Optional[str] =Depends(header_scheme)):
+    token = None
+
+    #önce auth_scheme üzerinden gelen tokenı alalım
+    if token_auth:
+        token = token_auth.credentials
+    #eger dogrudan header üzerinden geldiyse onu kullanalım
+    elif authorization and authorization.strip().lower().startswith("bearer "):
+        try:
+            parts = authorization.split()
+            if len(parts) == 2:
+                token = parts[1]
+        except IndexError:
+            pass
+
+    if not token: #token yoksa
         raise HTTPException(status_code=401, detail= {"error":"Access token required"})
-    if not authorization.strip().lower().startswith("bearer "):
-        raise HTTPException(status_code=401, detail= {"error":"Access token required"})
-    try:
-        parts = authorization.split()
-        if len(parts) != 2:
-            raise IndexError
-        token = parts[1]
-    except IndexError:
-        raise HTTPException(status_code=401, detail= {"error":"Access token required"})
-    try:
-        user_response = supabase.auth.get_user(token)
-        if not user_response or not user_response.user:
-            raise HTTPException(status_code=401, detail= {"error":"Invalid or expired token"})
-        return user_response.user
-    except Exception:
-        raise HTTPException(status_code=401, detail= {"error": "Invalid or expired token"})
+
+    try: #token gecerli mi
+        user_response = supabase.auth.get_user(token) #token sunucuda gecerli mi degil mi
+        if not user_response or not user_response.user: #supabaseden donen yanııtn bos olup olmadını ve icinde gecerli bir kullanıcı nesnesi barındırıp barındırmadıgına bakar
+            raise HTTPException(status_code=401, detail= {"error":"Invalid or expired token"})    
+        return user_response.user #token gecerliyse kullanıcı nesnesini fonksiyona verilir
+    except Exception: #token gecersizse 
+        raise HTTPException(status_code=401, detail= {"error": "Invalid or expired token"})    
+            
 
 
 
@@ -137,14 +145,19 @@ def login(auth: AuthRequest):
 
 #Logout route
 @app.post("/auth/logout", status_code=204, summary="Logout endpoint")
-def logout(authorization: Optional[str] = Depends(header_scheme)):
+def logout(user = Depends(get_current_user), token_auth=Depends(auth_scheme), authorization: Optional[str] = Depends(header_scheme)):
     try:
-        if authorization and authorization.strip().lower().startswith("bearer "):
+        token = None
+        if token_auth:
+            token = token_auth.credentials
+        elif authorization and authorization.strip().lower().startswith("bearer "):
             token = authorization.strip().lower().split()[1]
+        
+        if token:
             supabase.auth.sign_out(token)
     except Exception:
         pass
-    
+        
     return Response(status_code=204)
 
 
