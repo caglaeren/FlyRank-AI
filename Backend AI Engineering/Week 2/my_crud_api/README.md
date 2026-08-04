@@ -1,6 +1,6 @@
-# Simple CRUD API with FastAPI & PostgreSQL
+# Secure Task Management API with FastAPI, PostgreSQL & Supabase Auth
 
-This project is a Task Management API that performs basic CRUD (Create, Read, Update, Delete) operations, fully containerized with Docker Compose.
+This project is a secure Task Management and Authentication API built with FastAPI, PostgreSQL, and Supabase Auth, fully containerized with Docker Compose.
 
 ## 🚀 Quick Start (One-Command Run)
 
@@ -22,32 +22,50 @@ To run this project locally, ensure you have **Docker** and **Docker Compose** i
    docker compose up --build
    ```
 
-The API will be available at http://localhost:3000, and the PostgreSQL database will automatically initialize.
+The API will be available at http://localhost:8000, and the PostgreSQL database will automatically initialize.
 
 ## 🛠️ Environment Variables
 | Variable | Description | Example |
 | :--- | :--- | :--- |
-| DATABASE_URL | PostgreSQL connection string pointing to the docker service | postgres://postgres:dev@db:5432/tasks |
+| DATABASE_URL | PostgreSQL connection string | postgres://postgres:dev@db:5432/tasks |
+| SUPABASE_URL | Supabase Project URL | https://xyz.supabase.co |
+| SUPABASE_KEY | Supabase Anon/Service Key| eyJhbGciOi... |
+
 
 
 ## API Endpoints
 
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| POST | /tasks | Create a new task |
-| GET | /tasks | List all tasks |
-| PUT | /tasks/{id} | Update an existing task |
-| DELETE | /tasks/{id} | Delete a task |
+| Method | Endpoint | Description | Requires Auth? |
+| :--- | :--- | :--- | :--- |
+| POST | /auth/signup | Register a new user | No |
+| POST | /auth/login | Login and receive JWT tokens| No |
+| POST | /auth/logout | Logout user session | Yes (Bearer Token) |
+| GET | /public/info | Public info endpoint | No |
+| GET | /protected/profile | Get authenticated user profile| Yes (Bearer Token) |
+| GET | /protected/dashboard | Get authenticated user dashboard| Yes (Bearer Token) |
+| POST | /tasks | Create a new task | No |
+| GET | /tasks | List all tasks| No |
+| PUT | /tasks/{id} | Update an existing task | No |
+| DELETE | /tasks/{id} | Delete a task | No |
 
 
-## Swagger UI
-Access the interactive API documentation at: `http://localhost:3000/docs`
+## Swagger UI & Bearer Authentication
+Access the interactive API documentation at: `http://localhost:8000/docs`
 
+Protected endpoints feature interactive padlock icons. Click **Authorize**, paste your Supabase JWT `access_token`, and test secure routes directly from the browser without manual headers.
+
+## Database Configuration (PostgreSQL & Docker)
+
+- **Why PostgreSQL was chosen:** PostgreSQL is a powerful, enterprise-class open-source relational database system that provides robust concurrency, reliability, and seamless containerization support via Docker.
+
+- **How data persistence works:** The database state is securely stored using a Docker volume (`taskdata`), ensuring data is preserved even when containers are stopped or recreated.
+
+- **Automatic Database Creation:** The project is configured so that someone cloning the repository can run `docker compose up` and automatically set up the database structure without manual intervention.
 
 ## Example curl Output (GET)
 
 ```bash
-curl -i http://localhost:3000/tasks
+curl -i http://localhost:8000/tasks
 ```
 
 **JSON**
@@ -81,15 +99,15 @@ Here are the verification screenshots for the CRUD operations performed via Swag
 
 ![Verify Deletion](images/get_all_after_id_4_delete.png)
 
+### 5. Supabase Auth & Protected Endpoints (Swagger UI)
 
-## Database Configuration (PostgreSQL & Docker)
+![Swagger UI Bearer Auth](images/swagger_ui.png)
 
-- **Why PostgreSQL was chosen:** PostgreSQL is a powerful, enterprise-class open-source relational database system that provides robust concurrency, reliability, and seamless containerization support via Docker.
-- **How data persistence works:** The database state is securely stored using a Docker volume (`taskdata`), ensuring data is preserved even when containers are stopped or recreated.
-- **Automatic Database Creation:** The project is configured so that someone cloning the repository can run `docker compose up` and automatically set up the database structure without manual intervention.
 
 ### Database Viewer Screenshot
 ![Database Viewer](images/postgresql_docker1.png)
+
+
 
 ### Example SQL Query Executed
 ```sql
