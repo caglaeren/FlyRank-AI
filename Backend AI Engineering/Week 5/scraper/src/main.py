@@ -7,6 +7,7 @@ import time
 from datetime import datetime, timezone
 from bs4 import BeautifulSoup
 import json
+from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 
 #Request -> user-agent headırını eklemek icin
@@ -28,6 +29,29 @@ CATALOGUE_PAGE_1_CACHE = CACHE_DIR / "catalogue-page-1.html"
 
 BOOKS_CACHE_DIR  = CACHE_DIR / "books"
 BOOKS_CACHE_DIR.mkdir(exist_ok=True)
+
+OUTPUT_DIR = Path("output")
+OUTPUT_DIR.mkdir(exist_ok=True)
+OUTPUT_BOOKS_JSON = OUTPUT_DIR / "books.json"
+ERRORS_JSON = OUTPUT_DIR / "errors.json"
+
+#Pydantic seması
+class BookRecord(BaseModel):
+    title: str
+    product_url: HttpUrl
+    price : str
+    price_gbp : float
+    availability: str
+    rating : str
+    description : str | None = None
+    source_page : HttpUrl
+    fetched_at : str
+
+    @field_validator("product_url", "source_page", mode = "before")
+    def validate_https(cls, v):
+        if str(v).startswith("http://"):
+            return str(v).replace("http://", "https://", 1)
+        return str(v)
 
 def fetch_page(url, cache_path):
     #belirli bir url'i cacheden veya internetten ceker
@@ -57,9 +81,8 @@ def fetch_page(url, cache_path):
     return html_content, False # False -> internetten indirildi
 
 #tarama, 3 sayfalık katalog yapısını bastan sona yonetir.
-def scan_catalogue():
+def run_pipeline():
     current_url = CATALOGUE_PAGE_1_URL #taramaya en baştan yani 1. katalog sayfasından baslar
-    catalogue_pages = 0 #gezilen sayfa sayısını sayan sayac
     all_books_urls = [] #sayfalarda buldugumuz tum kitap linklerini biriktirmek icin bos bir liste
 
     page_num = 1 #dongunun hangi sayfada dosya adıyla (orn : catalogue-page-2.html) eşleşeceğini takip eder
@@ -71,9 +94,7 @@ def scan_catalogue():
         if not html_content:
             break
         
-        catalogue_pages += 1
         source_page_url = current_url
-
         #BeautifulSoup ile html'i parse edelim ve kitap linklerini toplayalım
         b_soup = BeautifulSoup(html_content, "html.parser") #gelen ham htm metni pythonın inceleyebilecegi yapıya cevirir 
         
@@ -99,12 +120,15 @@ def scan_catalogue():
             current_url = None
     
     #duplicate olan linkleri temizleyelim (url'e göre benzersiz yapalım)
+    #Canonical url ile temizleyeceğz
     unique_book_urls = {}
     for book_url, source_page in all_books_urls:
-        if book_url not in unique_book_urls:
-            unique_book_urls[book_url] = source_page
-    
-    raw_records = []
+        cannonical_url = book_url.replace("http://", "https://")
+        if cannonical_url not in unique_book_urls:
+            unique_book_urls[cannonical_url] = source_page    
+
+    valid_records = []       
+    error_records = []
 
     #her bir kitap detay sayfasına gidelim ve verileri toplayalım
     for index, (book_url, source_page) in enumerate(unique_book_urls.items(), start=1):
@@ -116,7 +140,6 @@ def scan_catalogue():
 
         #kitap detay sayfasındaki bilgileri toplayalım
         b_soup = BeautifulSoup(html_content, "html.parser")
-        #kitap resmi
 
         #Title - kitap adı
         title_element = b_soup.select_one("div.product_main h1") #belrtilen css secicisine uyan sayfadaki ilk html etiketini bulur
@@ -131,13 +154,22 @@ def scan_catalogue():
             price = price_element.get_text(strip=True)
         else:
             price = None
+        
+        #price orn "£51.77" -> prive_gbp (51.77) olacak 
+        price_gbp = None
+        if price:
+            try:
+                price_gbp = float(price.replace("£", "").strip())
+            except ValueError:
+                pass
+        
 
         #availability text - stok durumu
         availability_element = b_soup.select_one("div.product_main p.instock.availability")   
         if availability_element:
             availability = availability_element.get_text(strip=True)
         else:
-            availability = Non
+            availability = None
         
         #Rating text-class adından yakalanıyor
         rating_element = b_soup.select_one("div.product_main p.star-rating")
@@ -155,30 +187,36 @@ def scan_catalogue():
         else:
             description = None
 
-        records = { 
+        raw_d = { 
             "title": title,
             "product_url": book_url,
             "price": price,
+            "price_gbp" : price_gbp,
             "availability": availability,
             "rating": rating_text,
             "description": description,
             "source_page": source_page,
             "fetched_at": fetched_at_str,
         }
-        raw_records.append(records)
+        
+        #pydantic ile dogrulama-validation
+        try:
+            validated_record = BookRecord(**raw_d)
+            valid_records.append(validated_record.model_dump(mode="json"))
+        except Exception as e:
+            error_records.append({"raw_data": raw_d, "error": str(e)})
+        
         #gerçek isteklerde en az yarım saniye bekle (cacheden gelmediyse)
         if not from_cache:
             time.sleep(0.5)
         
+    #dosyaları kaydedelim
+    OUTPUT_BOOKS_JSON.write_text(json.dumps(valid_records, indent=4, ensure_ascii=False), encoding="utf-8")
+    if error_records:
+        ERRORS_JSON.write_text(json.dumps(error_records, indent=4, ensure_ascii=False), encoding="utf-8")
+    print(f"CHECKPOINT — books.json has {len(valid_records)} records, errors={len(error_records)}")
 
-        print(f"CHECKPOINT — detail_pages={len(raw_records)}") #toplanılan toplam ham kayıt sayısını hesaplar ve yazdırır
-        if raw_records: #listede hiç kayıt olup olmadığını kontrol eder, kayıt varsa:
-            print("\nRaw Record:")
-            print(json.dumps(raw_records[0], indent=2, ensure_ascii=False)) #listenin ilk elemanını yani kitabın ham verilerini iceren sozlugu secer
-            #indent=2: 2 bosluk girinti ile okunabilir json formatına sokar
-            #ensure_ascii=False: ozel karakterlerin bozulmadan oldugu gibi ekrana yazılmasını saglar
-          
 
 
 if __name__ == "__main__":
-    scan_catalogue()
+    run_pipeline()
