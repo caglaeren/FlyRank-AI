@@ -34,6 +34,7 @@ OUTPUT_DIR = Path("output")
 OUTPUT_DIR.mkdir(exist_ok=True)
 OUTPUT_BOOKS_JSON = OUTPUT_DIR / "books.json"
 ERRORS_JSON = OUTPUT_DIR / "errors.json"
+RUN_REPORT_JSON = OUTPUT_DIR / "run_report.json"
 
 #Pydantic seması
 class BookRecord(BaseModel):
@@ -58,30 +59,50 @@ def fetch_page(url, cache_path):
     if cache_path.exists():
         html_content = cache_path.read_text(encoding="utf-8")
         print(f"CACHE HIT ({cache_path.name}) - Response size: {len(html_content)} bytes")
-        return html_content, True # True cacheden gelir
+        return html_content, True, 0 # True cacheden gelir
     
     #Cache (onbellekte) yoksa internetten cekip gercekten indir
     request = Request(url, headers={"User-Agent": USER_AGENT})
-    try:
-        with urlopen(request, timeout = TIME_OUT) as response:
-            status = response.status
-            if status != 200:
-                raise RuntimeError(f"Unexpected status code: {status}")
-            html_content = response.read().decode("utf-8", errors="replace")
-    except HTTPError as e:
-        raise RuntimeError(f"HTTP Error {e.code}") from e
-    except URLError as e:
-        raise RuntimeError(f"URL Error {e.reason}") from e
-    except TimeoutError:
-        print("Request timed out.")
-        return None, False
-    #Cache olustur ve kaydet
-    cache_path.write_text(html_content, encoding="utf-8")
-    print(f"FETCH ({cache_path.name}) - Response size: {len(html_content)} bytes")
-    return html_content, False # False -> internetten indirildi
 
+    #Retry mekanizması (5xx veya timeout durumları için bir kez tekrar deneme)
+    max_retries = 2 #en fazla 2 tekrar deneyecek
+    for attempt in range(max_retries):
+        try:
+            with urlopen(request, timeout = TIME_OUT) as response: #urlye istegi atar
+                status = response.status
+                if status != 200:
+                    raise RuntimeError(f"Unexpected status code: {status}")
+                html_content = response.read().decode("utf-8", errors="replace") 
+                cache_path.write_text(html_content, encoding="utf-8") #basarılı donerse cache klasorune kaydeder 
+                print(f"FETCH ({cache_path.name}) - Response size: {len(html_content)} bytes")
+                return html_content, False, 1 # False -> internetten indirildi, 1 -> retry yapildi
+        except HTTPError as e:
+            #404 veya 403 gibi istemci hatalarında tekrar deneme yapma
+            #404-> sayfa bulunamadı, 403-> yetkisi yok, erisim reddedildi
+            if e.code in (404, 403):
+                print(f"HTTP Error {e.code} for {url}. Skipping retries.")
+                return None, False, 1 
+            if attempt == max_retries - 1: #hakkımız olan deneme sayısı bitince hata mesajı yazdırıp sonlandırır 
+                print(f"HTTP Error {e.code} after retries for {url}.")
+                return None, False, 1
+            time.sleep(1) #1 saniye bekle
+
+        except (URLError,TimeoutError):
+            if attempt == max_retries - 1:
+                print(f"Connection failed after retries for {url}.")
+                return None, False, 1
+            time.sleep(1)
+    return None, False, 1
+
+
+        
 #tarama, 3 sayfalık katalog yapısını bastan sona yonetir.
 def run_pipeline():
+    start_time_obj = datetime.now(timezone.utc)
+    start_time_str = start_time_obj.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    pages_fetched_count = 0
+    cache_hits_count = 0
+    failed_pages_count = 0
     current_url = CATALOGUE_PAGE_1_URL #taramaya en baştan yani 1. katalog sayfasından baslar
     all_books_urls = [] #sayfalarda buldugumuz tum kitap linklerini biriktirmek icin bos bir liste
 
@@ -90,8 +111,15 @@ def run_pipeline():
    #sitenin toplamda 3 sayfa oldugunu bildigimiz icin ve sitenin kendi yonlendirmesi devam ettigi surece bu dongu calısacak 
     while current_url and page_num <=3: 
         cache_path = CACHE_DIR / f"catalogue-page-{page_num}.html" #her sayfanın cachedeki dosya yolu belirlenir
-        html_content, from_cache = fetch_page(current_url, cache_path) #sayfanın html icerigi elde edilir ve verinin cacheden gelip gelmedigi bilgisi alınır 
-        if not html_content:
+        html_content, from_cache, failed_d = fetch_page(current_url, cache_path) #sayfanın html icerigi elde edilir ve verinin cacheden gelip gelmedigi bilgisi alınır 
+        
+        if from_cache:
+            cache_hits_count += 1 #eger sayfa onbellekten geldiyse, cache hit sayısı artar
+        else:
+            pages_fetched_count += 1 #internetten indirilen sayfa sayısı artar
+        failed_pages_count += failed_d  #failed_d degeri, failed_pages_count'a eklenerek raporda kullanılmak üzere hata takibi yapılır.
+        
+        if not html_content: #eger herhangi bir sebeple html icerigi alınamadıysa donguyu sonlandırır 
             break
         
         source_page_url = current_url
@@ -112,7 +140,6 @@ def run_pipeline():
             next_href = next_page_link.get("href")
             current_url = urljoin(current_url, next_href) #sonraki sayfanın tam adresi olusturulur
             page_num += 1
-
             #gerçek isteklerde en az yarım saniye bekle (cacheden gelmediyse)
             if not from_cache:
                 time.sleep(0.5)
@@ -126,6 +153,11 @@ def run_pipeline():
         cannonical_url = book_url.replace("http://", "https://")
         if cannonical_url not in unique_book_urls:
             unique_book_urls[cannonical_url] = source_page    
+    
+    #Proof (kanıt): test icin listeye bilerek bozuk bir url ekleyelim
+    #bu sahte url 404 verecek ve program cokmeyecek failed_pages artacak
+    test_fake_url = "https://books.toscrape.com/catalogue/this-page-does-not-exist-9889.html"
+    unique_book_urls[test_fake_url] = CATALOGUE_PAGE_1_URL
 
     valid_records = []       
     error_records = []
@@ -133,11 +165,17 @@ def run_pipeline():
     #her bir kitap detay sayfasına gidelim ve verileri toplayalım
     for index, (book_url, source_page) in enumerate(unique_book_urls.items(), start=1):
         book_cache_path = BOOKS_CACHE_DIR / f"book-{index}.html"
-        html_content, from_cache = fetch_page(book_url, book_cache_path)
+        html_content, from_cache, failed_d = fetch_page(book_url, book_cache_path)
+        if from_cache:
+            cache_hits_count += 1
+        else:
+            pages_fetched_count += 1
+         
         if not html_content:
+            failed_pages_count += failed_d
             continue
-        fetched_at_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
+        fetched_at_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
         #kitap detay sayfasındaki bilgileri toplayalım
         b_soup = BeautifulSoup(html_content, "html.parser")
 
@@ -209,12 +247,26 @@ def run_pipeline():
         #gerçek isteklerde en az yarım saniye bekle (cacheden gelmediyse)
         if not from_cache:
             time.sleep(0.5)
-        
+    end_time_obj = datetime.now(timezone.utc)
+    duration_seconds = (end_time_obj - start_time_obj).total_seconds()
+
     #dosyaları kaydedelim
     OUTPUT_BOOKS_JSON.write_text(json.dumps(valid_records, indent=4, ensure_ascii=False), encoding="utf-8")
     if error_records:
         ERRORS_JSON.write_text(json.dumps(error_records, indent=4, ensure_ascii=False), encoding="utf-8")
-    print(f"CHECKPOINT — books.json has {len(valid_records)} records, errors={len(error_records)}")
+
+    
+    report_data = {
+        "start_time" : start_time_str,
+        "duration_seconds" :round(duration_seconds, 2),
+        "pages_fetched" : pages_fetched_count,
+        "cache_hits" : cache_hits_count,
+        "valid_records" : len(valid_records),
+        "invalid_records" : len(error_records),
+        "failed_pages" : failed_pages_count
+    }
+    RUN_REPORT_JSON.write_text(json.dumps(report_data, indent=4, ensure_ascii=False), encoding="utf-8")
+    print(f"CHECKPOINT — books.json has {len(valid_records)} records, failed_pages={failed_pages_count}")
 
 
 
